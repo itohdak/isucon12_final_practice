@@ -19,6 +19,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
+
+	"github.com/kaz/pprotein/integration/standalone"
 )
 
 var (
@@ -50,6 +52,8 @@ type Handler struct {
 }
 
 func main() {
+	go standalone.Integrate(":8888")
+
 	rand.Seed(time.Now().UnixNano())
 	time.Local = time.FixedZone("Local", 9*60*60)
 
@@ -621,6 +625,12 @@ func initialize(c echo.Context) error {
 		c.Logger().Errorf("Failed to initialize %s: %v", string(out), err)
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
+
+	go func() {
+		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
+			c.Logger().Printf("failed to communicate with pprotein: %v", err)
+		}
+	}()
 
 	return successResponse(c, &InitializeResponse{
 		Language: "go",
