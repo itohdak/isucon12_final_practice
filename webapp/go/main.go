@@ -1901,10 +1901,10 @@ LOOP:
 
 // generateID ユニークなIDを生成する
 func (h *Handler) generateID() (int64, error) {
-	now := time.Now()
+	// now := time.Now()
 	select {
 	case id := <-IDQueue:
-		log.Printf("time spent to generate ID: %s", time.Since(now))
+		// log.Printf("time spent to generate ID: %s", time.Since(now))
 		return id, nil
 	case <-time.After(1 * time.Second):
 		return 0, fmt.Errorf("failed to get new id from queue, queue length is %d", len(IDQueue))
