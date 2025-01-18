@@ -80,6 +80,12 @@ func main() {
 	}
 
 	go startGenID()
+	go func() {
+		for {
+			log.Printf("id queue length: %d", len(IDQueue))
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{}))
 
