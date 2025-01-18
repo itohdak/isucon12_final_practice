@@ -875,10 +875,6 @@ func (h *Handler) login(c echo.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	query = "DELETE FROM user_sessions WHERE user_id=?"
-	if _, err = tx.Exec(query, req.UserID); err != nil {
-		return errorResponse(c, http.StatusInternalServerError, err)
-	}
 	sID, err := h.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
@@ -895,7 +891,10 @@ func (h *Handler) login(c echo.Context) error {
 		UpdatedAt: requestAt,
 		ExpiredAt: requestAt + 86400,
 	}
-	query = "INSERT INTO user_sessions(id, user_id, session_id, created_at, updated_at, expired_at) VALUES (?, ?, ?, ?, ?, ?)"
+	query = `
+	INSERT INTO user_sessions(id, user_id, session_id, created_at, updated_at, expired_at) VALUES (?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE created_at = VALUES(created_at), updated_at = VALUES(updated_at), expired_at = VALUES(expired_at)
+	`
 	if _, err = tx.Exec(query, sess.ID, sess.UserID, sess.SessionID, sess.CreatedAt, sess.UpdatedAt, sess.ExpiredAt); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
