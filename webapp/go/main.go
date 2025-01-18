@@ -1878,7 +1878,7 @@ func noContentResponse(c echo.Context, status int) error {
 var (
 	IDQueueMaxSize = 20000
 	IDQueue        = make(chan int64, IDQueueMaxSize)
-	IDGenStep      = 10
+	IDGenStep      = 20
 	StopGenID      = make(chan struct{}, 1)
 )
 
