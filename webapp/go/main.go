@@ -433,65 +433,65 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		return nil, err
 	}
 
-	obtainPresents := make([]*UserPresent, 0)
-	for _, np := range normalPresents {
-		received := new(UserPresentAllReceivedHistory)
-		query = "SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id=?"
-		err := tx.Get(received, query, userID, np.ID)
-		if err == nil {
-			// プレゼント配布済
-			continue
-		}
-		if err != sql.ErrNoRows {
-			return nil, err
-		}
+	query = `
+	SELECT
+		m.id AS id, m.item_type AS item_type, m.item_id AS item_id, m.amount AS amount, m.present_message AS present_message
+	FROM
+		present_all_masters m
+	WHERE
+		registered_start_at <= ? AND registered_end_at >= ? AND
+		NOT EXISTS (
+			SELECT 1 FROM user_present_all_received_history u
+			WHERE u.user_id = ? AND u.present_all_id = m.id
+		)`
+	var presents []UserPresent
+	if err := tx.Select(&presents, query, userID, requestAt, requestAt); err != nil {
+		return nil, err
+	}
 
+	obtainPresents := make([]*UserPresent, 0, len(presents))
+	histories := make([]*UserPresentAllReceivedHistory, 0, len(presents))
+	for _, up := range presents {
 		pID, err := h.generateID()
 		if err != nil {
 			return nil, err
 		}
-		up := &UserPresent{
-			ID:             pID,
-			UserID:         userID,
-			SentAt:         requestAt,
-			ItemType:       np.ItemType,
-			ItemID:         np.ItemID,
-			Amount:         int(np.Amount),
-			PresentMessage: np.PresentMessage,
-			CreatedAt:      requestAt,
-			UpdatedAt:      requestAt,
-		}
-		query = "INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-		if _, err := tx.Exec(query, up.ID, up.UserID, up.SentAt, up.ItemType, up.ItemID, up.Amount, up.PresentMessage, up.CreatedAt, up.UpdatedAt); err != nil {
-			return nil, err
-		}
+		up.ID = pID
+		up.UserID = userID
+		up.SentAt = requestAt
+		up.CreatedAt = requestAt
+		up.UpdatedAt = requestAt
+		obtainPresents = append(obtainPresents, &up)
 
 		phID, err := h.generateID()
 		if err != nil {
 			return nil, err
 		}
-		history := &UserPresentAllReceivedHistory{
+		histories = append(histories, &UserPresentAllReceivedHistory{
 			ID:           phID,
 			UserID:       userID,
-			PresentAllID: np.ID,
+			PresentAllID: up.ID,
 			ReceivedAt:   requestAt,
 			CreatedAt:    requestAt,
 			UpdatedAt:    requestAt,
-		}
-		query = "INSERT INTO user_present_all_received_history(id, user_id, present_all_id, received_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-		if _, err := tx.Exec(
-			query,
-			history.ID,
-			history.UserID,
-			history.PresentAllID,
-			history.ReceivedAt,
-			history.CreatedAt,
-			history.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
+		})
+	}
 
-		obtainPresents = append(obtainPresents, up)
+	query = `
+	INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at)
+	VALUES (:id, :user_id, :sent_at, :item_type, :item_id, :amount, :present_message, :created_at, :updated_at)`
+	if _, err := tx.NamedExec(query, obtainPresents); err != nil {
+		return nil, err
+	}
+
+	query = `
+	INSERT INTO user_present_all_received_history(id, user_id, present_all_id, received_at, created_at, updated_at)
+	VALUES (:id, :user_id, :present_all_id, :received_at, :created_at, :updated_at)`
+	if _, err := tx.NamedExec(
+		query,
+		histories,
+	); err != nil {
+		return nil, err
 	}
 
 	return obtainPresents, nil
