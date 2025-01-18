@@ -643,6 +643,9 @@ func initialize(c echo.Context) error {
 
 	wg.Wait()
 	go startGenID()
+	for len(IDQueue) < IDQueueMaxSize {
+	}
+	StopGenID <- struct{}{}
 
 	return successResponse(c, &InitializeResponse{
 		Language: "go",
@@ -1873,7 +1876,7 @@ func noContentResponse(c echo.Context, status int) error {
 }
 
 var (
-	IDQueueMaxSize = 10000
+	IDQueueMaxSize = 20000
 	IDQueue        = make(chan int64, IDQueueMaxSize)
 	StopGenID      = make(chan struct{}, 1)
 )
