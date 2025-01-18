@@ -210,7 +210,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 		}
 
 		userSession := new(Session)
-		query := "SELECT * FROM user_sessions WHERE session_id=? AND deleted_at IS NULL"
+		query := "SELECT * FROM user_sessions WHERE session_id=?"
 		if err := h.DB.Get(userSession, query, sessID); err != nil {
 			if err == sql.ErrNoRows {
 				return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
@@ -224,8 +224,8 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 
 		// 期限切れチェック
 		if userSession.ExpiredAt < requestAt {
-			query = "UPDATE user_sessions SET deleted_at=? WHERE session_id=?"
-			if _, err = h.DB.Exec(query, requestAt, sessID); err != nil {
+			query = "DELETE FROM user_sessions WHERE session_id=?"
+			if _, err = h.DB.Exec(query, sessID); err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
 			return errorResponse(c, http.StatusUnauthorized, ErrExpiredSession)
@@ -875,10 +875,6 @@ func (h *Handler) login(c echo.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	query = "UPDATE user_sessions SET deleted_at=? WHERE user_id=? AND deleted_at IS NULL"
-	if _, err = tx.Exec(query, requestAt, req.UserID); err != nil {
-		return errorResponse(c, http.StatusInternalServerError, err)
-	}
 	sID, err := h.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
@@ -895,7 +891,10 @@ func (h *Handler) login(c echo.Context) error {
 		UpdatedAt: requestAt,
 		ExpiredAt: requestAt + 86400,
 	}
-	query = "INSERT INTO user_sessions(id, user_id, session_id, created_at, updated_at, expired_at) VALUES (?, ?, ?, ?, ?, ?)"
+	query = `
+	INSERT INTO user_sessions(id, user_id, session_id, created_at, updated_at, expired_at) VALUES (?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE created_at = VALUES(created_at), updated_at = VALUES(updated_at), expired_at = VALUES(expired_at)
+	`
 	if _, err = tx.Exec(query, sess.ID, sess.UserID, sess.SessionID, sess.CreatedAt, sess.UpdatedAt, sess.ExpiredAt); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
