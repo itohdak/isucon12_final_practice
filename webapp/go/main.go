@@ -613,7 +613,7 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 // initialize 初期化処理
 // POST /initialize
 func initialize(c echo.Context) error {
-	StopGenID <- struct{}{}
+	stopGenID()
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -645,7 +645,7 @@ func initialize(c echo.Context) error {
 	go startGenID()
 	for len(IDQueue) < IDQueueMaxSize {
 	}
-	StopGenID <- struct{}{}
+	stopGenID()
 
 	return successResponse(c, &InitializeResponse{
 		Language: "go",
@@ -1878,6 +1878,7 @@ func noContentResponse(c echo.Context, status int) error {
 var (
 	IDQueueMaxSize = 20000
 	IDQueue        = make(chan int64, IDQueueMaxSize)
+	IDGenStep      = 10
 	StopGenID      = make(chan struct{}, 1)
 )
 
@@ -1902,6 +1903,10 @@ LOOP:
 	log.Printf("stop ID generation")
 }
 
+func stopGenID() {
+	StopGenID <- struct{}{}
+}
+
 // generateID ユニークなIDを生成する
 func (h *Handler) generateID() (int64, error) {
 	// now := time.Now()
@@ -1915,7 +1920,7 @@ func (h *Handler) generateID() (int64, error) {
 }
 
 func generateIDAsync(dbx *sqlx.DB) error {
-	res, err := dbx.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+1)")
+	res, err := dbx.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+?)", IDGenStep)
 	if err != nil {
 		log.Printf("failed to update id_generator: %w", err)
 		return err
@@ -1925,9 +1930,8 @@ func generateIDAsync(dbx *sqlx.DB) error {
 		log.Printf("failed to get last insert id: %w", err)
 		return err
 	}
-	IDQueue <- id
-	if id%100 == 0 {
-		log.Printf("inserted %d into id queue", id)
+	for i := 0; i < IDGenStep; i++ {
+		IDQueue <- (id - int64(IDGenStep)) + 1
 	}
 	return nil
 }
