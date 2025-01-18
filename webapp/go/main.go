@@ -1931,7 +1931,7 @@ func generateIDAsync(dbx *sqlx.DB) error {
 		return err
 	}
 	for i := 0; i < IDGenStep; i++ {
-		IDQueue <- (id - int64(IDGenStep)) + 1
+		IDQueue <- (id - int64(IDGenStep) + 1 + int64(i))
 	}
 	return nil
 }
