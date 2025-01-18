@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -76,6 +78,8 @@ func main() {
 	h := &Handler{
 		DB: dbx,
 	}
+
+	go startGenID()
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{}))
 
@@ -614,6 +618,16 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 // initialize 初期化処理
 // POST /initialize
 func initialize(c echo.Context) error {
+	StopGenID <- struct{}{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		for len(IDQueue) > 0 {
+			<-IDQueue
+		}
+		wg.Done()
+	}()
+
 	dbx, err := connectDB(true)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
@@ -631,6 +645,9 @@ func initialize(c echo.Context) error {
 			c.Logger().Printf("failed to communicate with pprotein: %v", err)
 		}
 	}()
+
+	wg.Wait()
+	go startGenID()
 
 	return successResponse(c, &InitializeResponse{
 		Language: "go",
@@ -1861,27 +1878,59 @@ func noContentResponse(c echo.Context, status int) error {
 	return c.NoContent(status)
 }
 
+var (
+	IDQueueMaxSize = 1000
+	IDQueue        = make(chan int64, IDQueueMaxSize)
+	StopGenID      = make(chan struct{}, 1)
+)
+
+func startGenID() {
+	dbx, err := connectDB(false)
+	if err != nil {
+		log.Printf("failed to connect to DB in startGenID")
+		return
+	}
+	defer dbx.Close()
+
+	log.Printf("start ID generation")
+LOOP:
+	for {
+		select {
+		case <-StopGenID:
+			break LOOP
+		default:
+			generateIDAsync(dbx)
+		}
+	}
+	log.Printf("stop ID generation")
+}
+
 // generateID ユニークなIDを生成する
 func (h *Handler) generateID() (int64, error) {
-	var updateErr error
-	for i := 0; i < 100; i++ {
-		res, err := h.DB.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+1)")
-		if err != nil {
-			if merr, ok := err.(*mysql.MySQLError); ok && merr.Number == 1213 {
-				updateErr = err
-				continue
-			}
-			return 0, err
-		}
-
-		id, err := res.LastInsertId()
-		if err != nil {
-			return 0, err
-		}
+	select {
+	case id := <-IDQueue:
 		return id, nil
+	case <-time.After(1 * time.Second):
+		return 0, fmt.Errorf("failed to get new id from queue, queue length is %d", len(IDQueue))
 	}
+}
 
-	return 0, fmt.Errorf("failed to generate id: %w", updateErr)
+func generateIDAsync(dbx *sqlx.DB) error {
+	res, err := dbx.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+1)")
+	if err != nil {
+		log.Printf("failed to update id_generator: %w", err)
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		log.Printf("failed to get last insert id: %w", err)
+		return err
+	}
+	IDQueue <- id
+	if id%100 == 0 {
+		log.Printf("inserted %d into id queue", id)
+	}
+	return nil
 }
 
 // generateUUID UUIDの生成
