@@ -13,12 +13,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
+	"github.com/rs/xid"
 
 	"github.com/kaz/pprotein/integration/standalone"
 )
@@ -170,7 +170,7 @@ func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 
 		// BANユーザ確認
 		userID, err := getUserID(c)
-		if err == nil && userID != 0 {
+		if err == nil && userID != "0" {
 			isBan, err := h.checkBan(userID)
 			if err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
@@ -263,7 +263,7 @@ func (h *Handler) checkOneTimeToken(token string, tokenType int, requestAt int64
 }
 
 // checkViewerID viewerIDとplatformの確認を行う
-func (h *Handler) checkViewerID(userID int64, viewerID string) error {
+func (h *Handler) checkViewerID(userID string, viewerID string) error {
 	query := "SELECT * FROM user_devices WHERE user_id=? AND platform_id=?"
 	device := new(UserDevice)
 	if err := h.DB.Get(device, query, userID, viewerID); err != nil {
@@ -277,7 +277,7 @@ func (h *Handler) checkViewerID(userID int64, viewerID string) error {
 }
 
 // checkBan BANされているユーザでかを確認する
-func (h *Handler) checkBan(userID int64) (bool, error) {
+func (h *Handler) checkBan(userID string) (bool, error) {
 	banUser := new(UserBan)
 	query := "SELECT * FROM user_bans WHERE user_id=?"
 	if err := h.DB.Get(banUser, query, userID); err != nil {
@@ -299,7 +299,7 @@ func getRequestTime(c echo.Context) (int64, error) {
 }
 
 // loginProcess ログイン処理
-func (h *Handler) loginProcess(tx *sqlx.Tx, userID int64, requestAt int64) (*User, []*UserLoginBonus, []*UserPresent, error) {
+func (h *Handler) loginProcess(tx *sqlx.Tx, userID string, requestAt int64) (*User, []*UserLoginBonus, []*UserPresent, error) {
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
 	if err := tx.Get(user, query, userID); err != nil {
@@ -347,7 +347,7 @@ func isCompleteTodayLogin(lastActivatedAt, requestAt time.Time) bool {
 }
 
 // obtainLoginBonus ログインボーナス付与
-func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) ([]*UserLoginBonus, error) {
+func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID string, requestAt int64) ([]*UserLoginBonus, error) {
 	loginBonuses := make([]*LoginBonusMaster, 0)
 	query := "SELECT * FROM login_bonus_masters WHERE start_at <= ? AND end_at >= ?"
 	if err := tx.Select(&loginBonuses, query, requestAt, requestAt); err != nil {
@@ -430,7 +430,7 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 }
 
 // obtainPresent プレゼント付与
-func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*UserPresent, error) {
+func (h *Handler) obtainPresent(tx *sqlx.Tx, userID string, requestAt int64) ([]*UserPresent, error) {
 	normalPresents := make([]*PresentAllMaster, 0)
 	query := "SELECT * FROM present_all_masters WHERE registered_start_at <= ? AND registered_end_at >= ?"
 	if err := tx.Select(&normalPresents, query, requestAt, requestAt); err != nil {
@@ -502,7 +502,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 }
 
 // obtainItem アイテム付与処理
-func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, obtainAmount int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
+func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID string, itemType int, obtainAmount int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
 	obtainCoins := make([]int64, 0)
 	obtainCards := make([]*UserCard, 0)
 	obtainItems := make([]*UserItem, 0)
@@ -807,7 +807,7 @@ type CreateUserRequest struct {
 }
 
 type CreateUserResponse struct {
-	UserID           int64            `json:"userId"`
+	UserID           string           `json:"userId"`
 	ViewerID         string           `json:"viewerId"`
 	SessionID        string           `json:"sessionId"`
 	CreatedAt        int64            `json:"createdAt"`
@@ -930,7 +930,7 @@ func (h *Handler) login(c echo.Context) error {
 
 type LoginRequest struct {
 	ViewerID string `json:"viewerId"`
-	UserID   int64  `json:"userId"`
+	UserID   string `json:"userId"`
 }
 
 type LoginResponse struct {
@@ -1566,34 +1566,34 @@ type AddExpToCardResponse struct {
 }
 
 type ConsumeItem struct {
-	ID     int64 `json:"id"`
-	Amount int   `json:"amount"`
+	ID     string `json:"id"`
+	Amount int    `json:"amount"`
 }
 
 type ConsumeUserItemData struct {
-	ID        int64 `db:"id"`
-	UserID    int64 `db:"user_id"`
-	ItemID    int64 `db:"item_id"`
-	ItemType  int   `db:"item_type"`
-	Amount    int   `db:"amount"`
-	CreatedAt int64 `db:"created_at"`
-	UpdatedAt int64 `db:"updated_at"`
-	GainedExp int   `db:"gained_exp"`
+	ID        string `db:"id"`
+	UserID    string `db:"user_id"`
+	ItemID    string `db:"item_id"`
+	ItemType  int    `db:"item_type"`
+	Amount    int    `db:"amount"`
+	CreatedAt int64  `db:"created_at"`
+	UpdatedAt int64  `db:"updated_at"`
+	GainedExp int    `db:"gained_exp"`
 
 	ConsumeAmount int // 消費量
 }
 
 type TargetUserCardData struct {
-	ID               int64 `db:"id"`
-	UserID           int64 `db:"user_id"`
-	CardID           int64 `db:"card_id"`
-	AmountPerSec     int   `db:"amount_per_sec"`
-	Level            int   `db:"level"`
-	TotalExp         int   `db:"total_exp"`
-	BaseAmountPerSec int   `db:"base_amount_per_sec"`
-	MaxLevel         int   `db:"max_level"`
-	MaxAmountPerSec  int   `db:"max_amount_per_sec"`
-	BaseExpPerLevel  int   `db:"base_exp_per_level"`
+	ID               string `db:"id"`
+	UserID           string `db:"user_id"`
+	CardID           string `db:"card_id"`
+	AmountPerSec     int    `db:"amount_per_sec"`
+	Level            int    `db:"level"`
+	TotalExp         int    `db:"total_exp"`
+	BaseAmountPerSec int    `db:"base_amount_per_sec"`
+	MaxLevel         int    `db:"max_level"`
+	MaxAmountPerSec  int    `db:"max_amount_per_sec"`
+	BaseExpPerLevel  int    `db:"base_exp_per_level"`
 }
 
 // updateDeck 装備変更
@@ -1680,8 +1680,8 @@ func (h *Handler) updateDeck(c echo.Context) error {
 }
 
 type UpdateDeckRequest struct {
-	ViewerID string  `json:"viewerId"`
-	CardIDs  []int64 `json:"cardIds"`
+	ViewerID string   `json:"viewerId"`
+	CardIDs  []string `json:"cardIds"`
 }
 
 type UpdateDeckResponse struct {
@@ -1789,7 +1789,7 @@ func (h *Handler) home(c echo.Context) error {
 
 	cards := make([]*UserCard, 0)
 	if deck != nil {
-		cardIds := []int64{deck.CardID1, deck.CardID2, deck.CardID3}
+		cardIds := []string{deck.CardID1, deck.CardID2, deck.CardID3}
 		query, params, err := sqlx.In("SELECT * FROM user_cards WHERE id IN (?)", cardIds)
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, err)
@@ -1862,26 +1862,9 @@ func noContentResponse(c echo.Context, status int) error {
 }
 
 // generateID ユニークなIDを生成する
-func (h *Handler) generateID() (int64, error) {
-	var updateErr error
-	for i := 0; i < 100; i++ {
-		res, err := h.DB.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+1)")
-		if err != nil {
-			if merr, ok := err.(*mysql.MySQLError); ok && merr.Number == 1213 {
-				updateErr = err
-				continue
-			}
-			return 0, err
-		}
-
-		id, err := res.LastInsertId()
-		if err != nil {
-			return 0, err
-		}
-		return id, nil
-	}
-
-	return 0, fmt.Errorf("failed to generate id: %w", updateErr)
+func (h *Handler) generateID() (string, error) {
+	guid := xid.New()
+	return guid.String(), nil
 }
 
 // generateUUID UUIDの生成
@@ -1895,8 +1878,8 @@ func generateUUID() (string, error) {
 }
 
 // getUserID path paramからuserIDを取得する
-func getUserID(c echo.Context) (int64, error) {
-	return strconv.ParseInt(c.Param("userID"), 10, 64)
+func getUserID(c echo.Context) (string, error) {
+	return c.Param("userID"), nil
 }
 
 // getEnv 環境変数から値を取得する
@@ -1959,7 +1942,7 @@ func makeUpdatedResources(
 // entity
 
 type User struct {
-	ID              int64  `json:"id" db:"id"`
+	ID              string `json:"id" db:"id"`
 	IsuCoin         int64  `json:"isuCoin" db:"isu_coin"`
 	LastGetRewardAt int64  `json:"lastGetRewardAt" db:"last_getreward_at"`
 	LastActivatedAt int64  `json:"lastActivatedAt" db:"last_activated_at"`
@@ -1970,8 +1953,8 @@ type User struct {
 }
 
 type UserDevice struct {
-	ID           int64  `json:"id" db:"id"`
-	UserID       int64  `json:"userId" db:"user_id"`
+	ID           string `json:"id" db:"id"`
+	UserID       string `json:"userId" db:"user_id"`
 	PlatformID   string `json:"platformId" db:"platform_id"`
 	PlatformType int    `json:"platformType" db:"platform_type"`
 	CreatedAt    int64  `json:"createdAt" db:"created_at"`
@@ -1980,17 +1963,17 @@ type UserDevice struct {
 }
 
 type UserBan struct {
-	ID        int64  `db:"id"`
-	UserID    int64  `db:"user_id"`
+	ID        string `db:"id"`
+	UserID    string `db:"user_id"`
 	CreatedAt int64  `db:"created_at"`
 	UpdatedAt int64  `db:"updated_at"`
 	DeletedAt *int64 `db:"deleted_at"`
 }
 
 type UserCard struct {
-	ID           int64  `json:"id" db:"id"`
-	UserID       int64  `json:"userId" db:"user_id"`
-	CardID       int64  `json:"cardId" db:"card_id"`
+	ID           string `json:"id" db:"id"`
+	UserID       string `json:"userId" db:"user_id"`
+	CardID       string `json:"cardId" db:"card_id"`
 	AmountPerSec int    `json:"amountPerSec" db:"amount_per_sec"`
 	Level        int    `json:"level" db:"level"`
 	TotalExp     int64  `json:"totalExp" db:"total_exp"`
@@ -2000,21 +1983,21 @@ type UserCard struct {
 }
 
 type UserDeck struct {
-	ID        int64  `json:"id" db:"id"`
-	UserID    int64  `json:"userId" db:"user_id"`
-	CardID1   int64  `json:"cardId1" db:"user_card_id_1"`
-	CardID2   int64  `json:"cardId2" db:"user_card_id_2"`
-	CardID3   int64  `json:"cardId3" db:"user_card_id_3"`
+	ID        string `json:"id" db:"id"`
+	UserID    string `json:"userId" db:"user_id"`
+	CardID1   string
+	CardID2   string `json:"cardId2" db:"user_card_id_2"`
+	CardID3   string `json:"cardId3" db:"user_card_id_3"`
 	CreatedAt int64  `json:"createdAt" db:"created_at"`
 	UpdatedAt int64  `json:"updatedAt" db:"updated_at"`
 	DeletedAt *int64 `json:"deletedAt,omitempty" db:"deleted_at"`
 }
 
 type UserItem struct {
-	ID        int64  `json:"id" db:"id"`
-	UserID    int64  `json:"userId" db:"user_id"`
+	ID        string `json:"id" db:"id"`
+	UserID    string `json:"userId" db:"user_id"`
 	ItemType  int    `json:"itemType" db:"item_type"`
-	ItemID    int64  `json:"itemId" db:"item_id"`
+	ItemID    string `json:"itemId" db:"item_id"`
 	Amount    int    `json:"amount" db:"amount"`
 	CreatedAt int64  `json:"createdAt" db:"created_at"`
 	UpdatedAt int64  `json:"updatedAt" db:"updated_at"`
@@ -2022,9 +2005,9 @@ type UserItem struct {
 }
 
 type UserLoginBonus struct {
-	ID                 int64  `json:"id" db:"id"`
-	UserID             int64  `json:"userId" db:"user_id"`
-	LoginBonusID       int64  `json:"loginBonusId" db:"login_bonus_id"`
+	ID                 string `json:"id" db:"id"`
+	UserID             string `json:"userId" db:"user_id"`
+	LoginBonusID       string `json:"loginBonusId" db:"login_bonus_id"`
 	LastRewardSequence int    `json:"lastRewardSequence" db:"last_reward_sequence"`
 	LoopCount          int    `json:"loopCount" db:"loop_count"`
 	CreatedAt          int64  `json:"createdAt" db:"created_at"`
@@ -2033,11 +2016,11 @@ type UserLoginBonus struct {
 }
 
 type UserPresent struct {
-	ID             int64  `json:"id" db:"id"`
-	UserID         int64  `json:"userId" db:"user_id"`
+	ID             string `json:"id" db:"id"`
+	UserID         string `json:"userId" db:"user_id"`
 	SentAt         int64  `json:"sentAt" db:"sent_at"`
 	ItemType       int    `json:"itemType" db:"item_type"`
-	ItemID         int64  `json:"itemId" db:"item_id"`
+	ItemID         string `json:"itemId" db:"item_id"`
 	Amount         int    `json:"amount" db:"amount"`
 	PresentMessage string `json:"presentMessage" db:"present_message"`
 	CreatedAt      int64  `json:"createdAt" db:"created_at"`
@@ -2046,9 +2029,9 @@ type UserPresent struct {
 }
 
 type UserPresentAllReceivedHistory struct {
-	ID           int64  `json:"id" db:"id"`
-	UserID       int64  `json:"userId" db:"user_id"`
-	PresentAllID int64  `json:"presentAllId" db:"present_all_id"`
+	ID           string `json:"id" db:"id"`
+	UserID       string `json:"userId" db:"user_id"`
+	PresentAllID string `json:"presentAllId" db:"present_all_id"`
 	ReceivedAt   int64  `json:"receivedAt" db:"received_at"`
 	CreatedAt    int64  `json:"createdAt" db:"created_at"`
 	UpdatedAt    int64  `json:"updatedAt" db:"updated_at"`
@@ -2056,8 +2039,8 @@ type UserPresentAllReceivedHistory struct {
 }
 
 type Session struct {
-	ID        int64  `json:"id" db:"id"`
-	UserID    int64  `json:"userId" db:"user_id"`
+	ID        string `json:"id" db:"id"`
+	UserID    string `json:"userId" db:"user_id"`
 	SessionID string `json:"sessionId" db:"session_id"`
 	ExpiredAt int64  `json:"expiredAt" db:"expired_at"`
 	CreatedAt int64  `json:"createdAt" db:"created_at"`
@@ -2066,8 +2049,8 @@ type Session struct {
 }
 
 type UserOneTimeToken struct {
-	ID        int64  `json:"id" db:"id"`
-	UserID    int64  `json:"userId" db:"user_id"`
+	ID        string `json:"id" db:"id"`
+	UserID    string `json:"userId" db:"user_id"`
 	Token     string `json:"token" db:"token"`
 	TokenType int    `json:"tokenType" db:"token_type"`
 	ExpiredAt int64  `json:"expiredAt" db:"expired_at"`
@@ -2080,7 +2063,7 @@ type UserOneTimeToken struct {
 // master entity
 
 type GachaMaster struct {
-	ID           int64  `json:"id" db:"id"`
+	ID           string `json:"id" db:"id"`
 	Name         string `json:"name" db:"name"`
 	StartAt      int64  `json:"startAt" db:"start_at"`
 	EndAt        int64  `json:"endAt" db:"end_at"`
@@ -2089,17 +2072,17 @@ type GachaMaster struct {
 }
 
 type GachaItemMaster struct {
-	ID        int64 `json:"id" db:"id"`
-	GachaID   int64 `json:"gachaId" db:"gacha_id"`
-	ItemType  int   `json:"itemType" db:"item_type"`
-	ItemID    int64 `json:"itemId" db:"item_id"`
-	Amount    int   `json:"amount" db:"amount"`
-	Weight    int   `json:"weight" db:"weight"`
-	CreatedAt int64 `json:"createdAt" db:"created_at"`
+	ID        string `json:"id" db:"id"`
+	GachaID   string `json:"gachaId" db:"gacha_id"`
+	ItemType  int    `json:"itemType" db:"item_type"`
+	ItemID    string `json:"itemId" db:"item_id"`
+	Amount    int    `json:"amount" db:"amount"`
+	Weight    int    `json:"weight" db:"weight"`
+	CreatedAt int64  `json:"createdAt" db:"created_at"`
 }
 
 type ItemMaster struct {
-	ID              int64  `json:"id" db:"id"`
+	ID              string `json:"id" db:"id"`
 	ItemType        int    `json:"itemType" db:"item_type"`
 	Name            string `json:"name" db:"name"`
 	Description     string `json:"description" db:"description"`
@@ -2113,37 +2096,37 @@ type ItemMaster struct {
 }
 
 type LoginBonusMaster struct {
-	ID          int64 `json:"id" db:"id"`
-	StartAt     int64 `json:"startAt" db:"start_at"`
-	EndAt       int64 `json:"endAt" db:"end_at"`
-	ColumnCount int   `json:"columnCount" db:"column_count"`
-	Looped      bool  `json:"looped" db:"looped"`
-	CreatedAt   int64 `json:"createdAt" db:"created_at"`
+	ID          string `json:"id" db:"id"`
+	StartAt     int64  `json:"startAt" db:"start_at"`
+	EndAt       int64  `json:"endAt" db:"end_at"`
+	ColumnCount int    `json:"columnCount" db:"column_count"`
+	Looped      bool   `json:"looped" db:"looped"`
+	CreatedAt   int64  `json:"createdAt" db:"created_at"`
 }
 
 type LoginBonusRewardMaster struct {
-	ID             int64 `json:"id" db:"id"`
-	LoginBonusID   int64 `json:"loginBonusId" db:"login_bonus_id"`
-	RewardSequence int   `json:"rewardSequence" db:"reward_sequence"`
-	ItemType       int   `json:"itemType" db:"item_type"`
-	ItemID         int64 `json:"itemId" db:"item_id"`
-	Amount         int64 `json:"amount" db:"amount"`
-	CreatedAt      int64 `json:"createdAt" db:"created_at"`
+	ID             string `json:"id" db:"id"`
+	LoginBonusID   string `json:"loginBonusId" db:"login_bonus_id"`
+	RewardSequence int    `json:"rewardSequence" db:"reward_sequence"`
+	ItemType       int    `json:"itemType" db:"item_type"`
+	ItemID         string `json:"itemId" db:"item_id"`
+	Amount         int64  `json:"amount" db:"amount"`
+	CreatedAt      int64  `json:"createdAt" db:"created_at"`
 }
 
 type PresentAllMaster struct {
-	ID                int64  `json:"id" db:"id"`
+	ID                string `json:"id" db:"id"`
 	RegisteredStartAt int64  `json:"registeredStartAt" db:"registered_start_at"`
 	RegisteredEndAt   int64  `json:"registeredEndAt" db:"registered_end_at"`
 	ItemType          int    `json:"itemType" db:"item_type"`
-	ItemID            int64  `json:"itemId" db:"item_id"`
+	ItemID            string `json:"itemId" db:"item_id"`
 	Amount            int64  `json:"amount" db:"amount"`
 	PresentMessage    string `json:"presentMessage" db:"present_message"`
 	CreatedAt         int64  `json:"createdAt" db:"created_at"`
 }
 
 type VersionMaster struct {
-	ID            int64  `json:"id" db:"id"`
+	ID            string `json:"id" db:"id"`
 	Status        int    `json:"status" db:"status"`
 	MasterVersion string `json:"masterVersion" db:"master_version"`
 }

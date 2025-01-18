@@ -125,7 +125,7 @@ func (h *Handler) adminLogin(c echo.Context) error {
 }
 
 type AdminLoginRequest struct {
-	UserID   int64  `json:"userId"`
+	UserID   string `json:"userId"`
 	Password string `json:"password"`
 }
 
@@ -641,6 +641,7 @@ type AdminBanUserResponse struct {
 }
 
 // hashPassword パスワードをハッシュ化する
+//
 //nolint:deadcode,unused
 func hashPassword(pw string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
@@ -659,7 +660,7 @@ func verifyPassword(hash, pw string) error {
 }
 
 type AdminUser struct {
-	ID              int64  `db:"id"`
+	ID              string `db:"id"`
 	Password        string `db:"password"`
 	LastActivatedAt int64  `db:"last_activated_at"`
 	CreatedAt       int64  `db:"created_at"`
