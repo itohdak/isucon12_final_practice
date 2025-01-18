@@ -445,7 +445,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 			WHERE u.user_id = ? AND u.present_all_id = m.id
 		)`
 	var presents []UserPresent
-	if err := tx.Select(&presents, query, userID, requestAt, requestAt); err != nil {
+	if err := tx.Select(&presents, query, requestAt, requestAt, userID); err != nil {
 		return nil, err
 	}
 
