@@ -18,9 +18,9 @@ mysql -u"$ISUCON_DB_USER" \
 		-p"$ISUCON_DB_PASSWORD" \
 		--host "$ISUCON_DB_HOST" \
 		--port "$ISUCON_DB_PORT" \
-		"$ISUCON_DB_NAME" < 4_alldata_exclude_user_presents.sql
+		"$ISUCON_DB_NAME" < 97_alldata_exclude_user_presents.sql
 
-echo "delete from user_presents where id > 100000000000" | mysql -u"$ISUCON_DB_USER" \
+echo "delete from user_presents where length(id) >= 12" | mysql -u"$ISUCON_DB_USER" \
 		-p"$ISUCON_DB_PASSWORD" \
 		--host "$ISUCON_DB_HOST" \
 		--port "$ISUCON_DB_PORT" \
@@ -36,9 +36,3 @@ echo "LOAD DATA INFILE '${SECURE_DIR}5_user_presents_not_receive_data.tsv' REPLA
         --host "$ISUCON_DB_HOST" \
         --port "$ISUCON_DB_PORT" \
         "$ISUCON_DB_NAME" 
-
-mysql -u"$ISUCON_DB_USER" \
-		-p"$ISUCON_DB_PASSWORD" \
-		--host "$ISUCON_DB_HOST" \
-		--port "$ISUCON_DB_PORT" \
-		"$ISUCON_DB_NAME" < 99_patch.sql
