@@ -643,9 +643,9 @@ func initialize(c echo.Context) error {
 
 	wg.Wait()
 	go startGenID()
-	for len(IDQueue) < IDQueueMaxSize {
-	}
-	stopGenID()
+	// for len(IDQueue) < IDQueueMaxSize {
+	// }
+	// stopGenID()
 
 	return successResponse(c, &InitializeResponse{
 		Language: "go",
@@ -1887,13 +1887,16 @@ func noContentResponse(c echo.Context, status int) error {
 }
 
 var (
-	IDQueueMaxSize = 20000
+	IDQueueMaxSize = 50000
 	IDQueue        = make(chan int64, IDQueueMaxSize)
-	IDGenStep      = 20
+	IDGenStep      = 25
 	StopGenID      = make(chan struct{}, 1)
 )
 
 func startGenID() {
+	for len(StopGenID) > 0 {
+		<-StopGenID
+	}
 	dbx, err := connectDB(false)
 	if err != nil {
 		log.Printf("failed to connect to DB in startGenID")
