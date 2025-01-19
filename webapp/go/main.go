@@ -610,6 +610,158 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 	return obtainCoins, obtainCards, obtainItems, nil
 }
 
+// obtainItem アイテム付与処理
+func (h *Handler) obtainItems(tx *sqlx.Tx, userID int64, itemIDs []int64, itemType int, obtainAmounts []int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
+	obtainCoins := make([]int64, 0)
+	obtainCards := make([]*UserCard, 0)
+	obtainItems := make([]*UserItem, 0)
+
+	switch itemType {
+	case 1: // coin
+		user := new(User)
+		query := "SELECT * FROM users WHERE id=?"
+		if err := tx.Get(user, query, userID); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil, nil, ErrUserNotFound
+			}
+			return nil, nil, nil, err
+		}
+
+		query = "UPDATE users SET isu_coin=? WHERE id=?"
+		obtainAmountSum := int64(0)
+		for _, obtainAmount := range obtainAmounts {
+			obtainAmountSum += obtainAmount
+			obtainCoins = append(obtainCoins, obtainAmount)
+		}
+		totalCoin := user.IsuCoin + obtainAmountSum
+		if _, err := tx.Exec(query, totalCoin, user.ID); err != nil {
+			return nil, nil, nil, err
+		}
+
+	case 2: // card(ハンマー)
+		query := "SELECT * FROM item_masters WHERE id IN (:ids) AND item_type=:item_type"
+		query, param, _ := sqlx.Named(query, map[string]interface{}{
+			"ids":       itemIDs,
+			"item_type": itemType,
+		})
+		query, param, _ = sqlx.In(query, param...)
+		var items []*ItemMaster
+		err := tx.Select(items, query, param...)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if len(items) != len(itemIDs) {
+			return nil, nil, nil, ErrItemNotFound
+		}
+		itemMap := map[int64]*ItemMaster{}
+		for _, item := range items {
+			itemMap[item.ID] = item
+		}
+
+		for _, itemID := range itemIDs {
+			cID, err := h.generateID()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			obtainCards = append(obtainCards, &UserCard{
+				ID:           cID,
+				UserID:       userID,
+				CardID:       itemID,
+				AmountPerSec: *itemMap[itemID].AmountPerSec,
+				Level:        1,
+				TotalExp:     0,
+				CreatedAt:    requestAt,
+				UpdatedAt:    requestAt,
+			})
+		}
+		query = "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:id, :user_id, :card_id, :amount_per_sec, :level, :total_exp, :created_at, :updated_at)"
+		if _, err := tx.NamedExec(query, obtainCards); err != nil {
+			return nil, nil, nil, err
+		}
+
+	case 3, 4: // 強化素材
+		query := "SELECT * FROM item_masters WHERE id IN (:ids) AND item_type=:item_type"
+		query, param, _ := sqlx.Named(query, map[string]interface{}{
+			"ids":       itemIDs,
+			"item_type": itemType,
+		})
+		query, param, _ = sqlx.In(query, param...)
+		var items []*ItemMaster
+		err := tx.Select(items, query, param...)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		itemMap := map[int64]*ItemMaster{}
+		for _, item := range items {
+			itemMap[item.ID] = item
+		}
+
+		query = "SELECT * FROM user_items WHERE user_id = :user_id AND item_id IN (:item_id)"
+		query, params, _ := sqlx.Named(query, map[string]interface{}{
+			"user_id": userID,
+			"item_id": itemIDs,
+		})
+		query, params, _ = sqlx.In(query, params...)
+		uitems := []*UserItem{}
+		if err := tx.Select(uitems, query, params...); err != nil {
+			return nil, nil, nil, err
+		}
+		userItemIDMap := map[int64]int64{}
+		for _, uitem := range uitems {
+			userItemIDMap[uitem.ItemID] = uitem.ID
+		}
+
+		obtainAmountMap := map[int64]int64{}
+		for i := range items {
+			obtainAmountMap[items[i].ID] += obtainAmounts[i]
+		}
+		userItems := []*UserItem{}
+		for itemID, obtainAmount := range obtainAmountMap {
+			uitemID, ok := userItemIDMap[itemID]
+			if ok {
+				userItems = append(userItems, &UserItem{
+					ID:        uitemID,
+					UserID:    userID,
+					ItemType:  itemMap[itemID].ItemType,
+					ItemID:    itemID,
+					Amount:    int(obtainAmount),
+					CreatedAt: requestAt,
+					UpdatedAt: requestAt,
+				})
+			} else {
+				uitemID, err := h.generateID()
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				userItems = append(userItems, &UserItem{
+					ID:        uitemID,
+					UserID:    userID,
+					ItemType:  itemMap[itemID].ItemType,
+					ItemID:    itemID,
+					Amount:    int(obtainAmount),
+					CreatedAt: requestAt,
+					UpdatedAt: requestAt,
+				})
+			}
+		}
+
+		query = `
+		INSERT INTO user_items(id, user_id, item_id, item_type, amount, created_at, updated_at) VALUES (:id, :user_id, :item_id, :item_type, :amount, :created_at, :updated_at)
+		ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), updated_at = VALUES(updated_at)`
+		query, params, _ = sqlx.Named(query, userItems)
+		if _, err = tx.Exec(query, params...); err != nil {
+			return nil, nil, nil, err
+		}
+
+		obtainItems = append(obtainItems, userItems...)
+
+	default:
+		return nil, nil, nil, ErrInvalidItemType
+	}
+
+	return obtainCoins, obtainCards, obtainItems, nil
+}
+
 // initialize 初期化処理
 // POST /initialize
 func initialize(c echo.Context) error {
@@ -1304,8 +1456,12 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	// 配布処理
 	query = "UPDATE user_presents SET deleted_at = :deleted_at, updated_at = :updated_at WHERE id IN (:ids)"
 	obtainPresentIDs := make([]int64, 0, len(obtainPresent))
+	itemIDs := make([][]int64, 5)
+	obtainAmounts := make([][]int64, 5)
 	for _, present := range obtainPresent {
 		obtainPresentIDs = append(obtainPresentIDs, present.ID)
+		itemIDs[present.ItemType] = append(itemIDs[present.ItemType], present.ItemID)
+		obtainAmounts[present.ItemType] = append(obtainAmounts[present.ItemType], int64(present.Amount))
 	}
 	query, params, err = sqlx.Named(query, map[string]interface{}{
 		"deleted_at": requestAt,
@@ -1318,16 +1474,8 @@ func (h *Handler) receivePresent(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to bulk exec update for user_presents: %w", err))
 	}
 
-	for i := range obtainPresent {
-		if obtainPresent[i].DeletedAt != nil {
-			return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("received present"))
-		}
-
-		obtainPresent[i].UpdatedAt = requestAt
-		obtainPresent[i].DeletedAt = &requestAt
-		v := obtainPresent[i]
-
-		_, _, _, err = h.obtainItem(tx, v.UserID, v.ItemID, v.ItemType, int64(v.Amount), requestAt)
+	for i := 1; i <= 4; i++ {
+		_, _, _, err = h.obtainItems(tx, userID, itemIDs[i], 1, obtainAmounts[i], requestAt)
 		if err != nil {
 			if err == ErrUserNotFound || err == ErrItemNotFound {
 				return errorResponse(c, http.StatusNotFound, err)
