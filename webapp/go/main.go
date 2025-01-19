@@ -1302,6 +1302,22 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	defer tx.Rollback() //nolint:errcheck
 
 	// 配布処理
+	query = "UPDATE user_presents SET deleted_at = :deleted_at, updated_at = :updated_at WHERE id IN (:ids)"
+	obtainPresentIDs := make([]int64, 0, len(obtainPresent))
+	for _, present := range obtainPresent {
+		obtainPresentIDs = append(obtainPresentIDs, present.ID)
+	}
+	query, params, err = sqlx.Named(query, map[string]interface{}{
+		"deleted_at": requestAt,
+		"updated_at": requestAt,
+		"ids":        obtainPresentIDs,
+	})
+	query, params, err = sqlx.In(query, params...)
+	_, err = tx.Exec(query, params...)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to bulk exec update for user_presents: %w", err))
+	}
+
 	for i := range obtainPresent {
 		if obtainPresent[i].DeletedAt != nil {
 			return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("received present"))
@@ -1310,11 +1326,6 @@ func (h *Handler) receivePresent(c echo.Context) error {
 		obtainPresent[i].UpdatedAt = requestAt
 		obtainPresent[i].DeletedAt = &requestAt
 		v := obtainPresent[i]
-		query = "UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id=?"
-		_, err := tx.Exec(query, requestAt, requestAt, v.ID)
-		if err != nil {
-			return errorResponse(c, http.StatusInternalServerError, err)
-		}
 
 		_, _, _, err = h.obtainItem(tx, v.UserID, v.ItemID, v.ItemType, int64(v.Amount), requestAt)
 		if err != nil {
