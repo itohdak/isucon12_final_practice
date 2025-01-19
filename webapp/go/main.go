@@ -20,7 +20,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/pkg/errors"
 
 	"github.com/kaz/pprotein/integration/standalone"
 )
@@ -2015,7 +2014,8 @@ func (h *Handler) health(c echo.Context) error {
 
 // errorResponse エラーレスポンス
 func errorResponse(c echo.Context, statusCode int, err error) error {
-	c.Logger().Errorf("status=%d, err=%+v", statusCode, errors.WithStack(err))
+	// c.Logger().Errorf("status=%d, err=%+v", statusCode, errors.WithStack(err))
+	c.Logger().Errorf("status=%d, err=%w", statusCode, err)
 
 	return c.JSON(statusCode, struct {
 		StatusCode int    `json:"status_code"`
