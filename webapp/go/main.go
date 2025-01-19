@@ -1458,10 +1458,12 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	obtainPresentIDs := make([]int64, 0, len(obtainPresent))
 	itemIDs := make([][]int64, 5)
 	obtainAmounts := make([][]int64, 5)
-	for _, present := range obtainPresent {
+	for i, present := range obtainPresent {
 		obtainPresentIDs = append(obtainPresentIDs, present.ID)
 		itemIDs[present.ItemType] = append(itemIDs[present.ItemType], present.ItemID)
 		obtainAmounts[present.ItemType] = append(obtainAmounts[present.ItemType], int64(present.Amount))
+		obtainPresent[i].UpdatedAt = requestAt
+		obtainPresent[i].DeletedAt = &requestAt
 	}
 	query, params, err = sqlx.Named(query, map[string]interface{}{
 		"deleted_at": requestAt,
