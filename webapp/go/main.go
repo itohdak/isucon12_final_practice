@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel"
 
 	"github.com/kaz/pprotein/integration/standalone"
 )
@@ -39,6 +42,8 @@ var (
 	ErrUnauthorized             error = fmt.Errorf("unauthorized user")
 	ErrForbidden                error = fmt.Errorf("forbidden")
 	ErrGeneratePassword         error = fmt.Errorf("failed to password hash") //nolint:deadcode
+
+	tracer = otel.Tracer("isucon12-final")
 )
 
 const (
@@ -55,6 +60,16 @@ type Handler struct {
 func main() {
 	go standalone.Integrate(":8888")
 
+	tp, err := initTracer()
+	if err != nil {
+		log.Fatalf("failed to init tracer: %w", err)
+	}
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			log.Printf("failed to shutdown tracer provider: %w", err)
+		}
+	}()
+
 	rand.Seed(time.Now().UnixNano())
 	time.Local = time.FixedZone("Local", 9*60*60)
 
@@ -66,6 +81,7 @@ func main() {
 		AllowMethods: []string{http.MethodGet, http.MethodPost},
 		AllowHeaders: []string{"Content-Type", "x-master-version", "x-session"},
 	}))
+	e.Use(otelecho.Middleware("my-server"))
 
 	dbx, err := connectDB(false)
 	if err != nil {
