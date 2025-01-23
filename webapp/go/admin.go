@@ -94,7 +94,7 @@ func (h *Handler) adminLogin(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	sID, err := h.generateID()
+	sID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -629,7 +629,7 @@ func (h *Handler) adminBanUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	banID, err := h.generateID()
+	banID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}

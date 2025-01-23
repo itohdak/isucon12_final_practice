@@ -398,7 +398,7 @@ func (h *Handler) obtainLoginBonus(ctx context.Context, tx *sqlx.Tx, userID int6
 			}
 			initBonus = true
 
-			ubID, err := h.generateID()
+			ubID, err := h.generateID(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -491,7 +491,7 @@ func (h *Handler) obtainPresent(ctx context.Context, tx *sqlx.Tx, userID int64, 
 	obtainPresents := make([]*UserPresent, 0, len(presents))
 	histories := make([]*UserPresentAllReceivedHistory, 0, len(presents))
 	for _, up := range presents {
-		pID, err := h.generateID()
+		pID, err := h.generateID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -502,7 +502,7 @@ func (h *Handler) obtainPresent(ctx context.Context, tx *sqlx.Tx, userID int64, 
 		up.UpdatedAt = requestAt
 		obtainPresents = append(obtainPresents, &up)
 
-		phID, err := h.generateID()
+		phID, err := h.generateID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -576,7 +576,7 @@ func (h *Handler) obtainItem(ctx context.Context, tx *sqlx.Tx, userID, itemID in
 			return nil, nil, nil, err
 		}
 
-		cID, err := h.generateID()
+		cID, err := h.generateID(ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -616,7 +616,7 @@ func (h *Handler) obtainItem(ctx context.Context, tx *sqlx.Tx, userID, itemID in
 		}
 
 		if uitem == nil {
-			uitemID, err := h.generateID()
+			uitemID, err := h.generateID(ctx)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -704,7 +704,7 @@ func (h *Handler) obtainItems(ctx context.Context, tx *sqlx.Tx, userID int64, it
 		}
 
 		for _, itemID := range itemIDs {
-			cID, err := h.generateID()
+			cID, err := h.generateID(ctx)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -774,7 +774,7 @@ func (h *Handler) obtainItems(ctx context.Context, tx *sqlx.Tx, userID int64, it
 					UpdatedAt: requestAt,
 				})
 			} else {
-				uitemID, err := h.generateID()
+				uitemID, err := h.generateID(ctx)
 				if err != nil {
 					return nil, nil, nil, err
 				}
@@ -879,7 +879,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	defer tx.Rollback() //nolint:errcheck
 
 	// ユーザ作成
-	uID, err := h.generateID()
+	uID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -897,7 +897,7 @@ func (h *Handler) createUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	udID, err := h.generateID()
+	udID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -927,7 +927,7 @@ func (h *Handler) createUser(c echo.Context) error {
 
 	initCards := make([]*UserCard, 0, 3)
 	for i := 0; i < 3; i++ {
-		cID, err := h.generateID()
+		cID, err := h.generateID(ctx)
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, err)
 		}
@@ -948,7 +948,7 @@ func (h *Handler) createUser(c echo.Context) error {
 		initCards = append(initCards, card)
 	}
 
-	deckID, err := h.generateID()
+	deckID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -979,7 +979,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	}
 
 	// セッション発行
-	sID, err := h.generateID()
+	sID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1072,7 +1072,7 @@ func (h *Handler) login(c echo.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	sID, err := h.generateID()
+	sID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1203,7 +1203,7 @@ func (h *Handler) listGacha(c echo.Context) error {
 	if _, err = h.DB.ExecContext(ctx, query, requestAt, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	tID, err := h.generateID()
+	tID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1353,7 +1353,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 	// プレゼントにガチャ結果を付与する
 	presents := make([]*UserPresent, 0, gachaCount)
 	for _, v := range result {
-		pID, err := h.generateID()
+		pID, err := h.generateID(ctx)
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, err)
 		}
@@ -1599,7 +1599,7 @@ func (h *Handler) listItem(c echo.Context) error {
 	if _, err = h.DB.ExecContext(ctx, query, requestAt, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	tID, err := h.generateID()
+	tID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1880,7 +1880,7 @@ func (h *Handler) updateDeck(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	udID, err := h.generateID()
+	udID, err := h.generateID(ctx)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -2096,7 +2096,7 @@ func noContentResponse(c echo.Context, status int) error {
 var (
 	IDQueueMaxSize = 50000
 	IDQueue        = make(chan int64, IDQueueMaxSize)
-	IDGenStep      = 25
+	IDGenStep      = 100
 	StopGenID      = make(chan struct{}, 1)
 )
 
@@ -2129,11 +2129,12 @@ func stopGenID() {
 }
 
 // generateID ユニークなIDを生成する
-func (h *Handler) generateID() (int64, error) {
-	// now := time.Now()
+func (h *Handler) generateID(ctx context.Context) (int64, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "generateID")
+	defer span.End()
+
 	select {
 	case id := <-IDQueue:
-		// log.Printf("time spent to generate ID: %s", time.Since(now))
 		return id, nil
 	case <-time.After(1 * time.Second):
 		return 0, fmt.Errorf("failed to get new id from queue, queue length is %d", len(IDQueue))
