@@ -180,6 +180,7 @@ func (h *Handler) adminMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 // apiMiddleware　ユーザ向けAPI向けのmiddleware
 func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		requestAt, err := time.Parse(time.RFC1123, c.Request().Header.Get("x-isu-date"))
 		if err != nil {
 			requestAt = time.Now()
@@ -189,7 +190,7 @@ func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		// 有効なマスタデータか確認
 		query := "SELECT * FROM version_masters WHERE status=1"
 		masterVersion := new(VersionMaster)
-		if err := h.DB.Get(masterVersion, query); err != nil {
+		if err := h.DB.GetContext(ctx, masterVersion, query); err != nil {
 			if err == sql.ErrNoRows {
 				return errorResponse(c, http.StatusNotFound, fmt.Errorf("active master version is not found"))
 			}
@@ -203,7 +204,7 @@ func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		// BANユーザ確認
 		userID, err := getUserID(c)
 		if err == nil && userID != 0 {
-			isBan, err := h.checkBan(userID)
+			isBan, err := h.checkBan(ctx, userID)
 			if err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
@@ -222,6 +223,7 @@ func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 // checkSessionMiddleware セッションが有効か確認するmiddleware
 func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		sessID := c.Request().Header.Get("x-session")
 		if sessID == "" {
 			return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
@@ -239,7 +241,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 
 		userSession := new(Session)
 		query := "SELECT * FROM user_sessions WHERE session_id=?"
-		if err := h.DB.Get(userSession, query, sessID); err != nil {
+		if err := h.DB.GetContext(ctx, userSession, query, sessID); err != nil {
 			if err == sql.ErrNoRows {
 				return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
 			}
@@ -281,10 +283,10 @@ func (h *Handler) checkOneTimeToken(userID int64, token string, tokenType int, r
 }
 
 // checkViewerID viewerIDとplatformの確認を行う
-func (h *Handler) checkViewerID(userID int64, viewerID string) error {
+func (h *Handler) checkViewerID(ctx context.Context, userID int64, viewerID string) error {
 	query := "SELECT * FROM user_devices WHERE user_id=? AND platform_id=?"
 	device := new(UserDevice)
-	if err := h.DB.Get(device, query, userID, viewerID); err != nil {
+	if err := h.DB.GetContext(ctx, device, query, userID, viewerID); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrUserDeviceNotFound
 		}
@@ -295,10 +297,10 @@ func (h *Handler) checkViewerID(userID int64, viewerID string) error {
 }
 
 // checkBan BANされているユーザでかを確認する
-func (h *Handler) checkBan(userID int64) (bool, error) {
+func (h *Handler) checkBan(ctx context.Context, userID int64) (bool, error) {
 	banUser := new(UserBan)
 	query := "SELECT * FROM user_bans WHERE user_id=?"
-	if err := h.DB.Get(banUser, query, userID); err != nil {
+	if err := h.DB.GetContext(ctx, banUser, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil
 		}
@@ -1021,14 +1023,14 @@ func (h *Handler) login(c echo.Context) error {
 
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
-	if err := h.DB.Get(user, query, req.UserID); err != nil {
+	if err := h.DB.GetContext(ctx, user, query, req.UserID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, ErrUserNotFound)
 		}
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	isBan, err := h.checkBan(user.ID)
+	isBan, err := h.checkBan(ctx, user.ID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1036,7 +1038,7 @@ func (h *Handler) login(c echo.Context) error {
 		return errorResponse(c, http.StatusForbidden, ErrForbidden)
 	}
 
-	if err = h.checkViewerID(user.ID, req.ViewerID); err != nil {
+	if err = h.checkViewerID(ctx, user.ID, req.ViewerID); err != nil {
 		if err == ErrUserDeviceNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1258,7 +1260,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	if err = h.checkViewerID(userID, req.ViewerID); err != nil {
+	if err = h.checkViewerID(ctx, userID, req.ViewerID); err != nil {
 		if err == ErrUserDeviceNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1269,7 +1271,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
-	if err := h.DB.Get(user, query, userID); err != nil {
+	if err := h.DB.GetContext(ctx, user, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, ErrUserNotFound)
 		}
@@ -1281,7 +1283,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 
 	query = "SELECT * FROM gacha_masters WHERE id=? AND start_at <= ? AND end_at >= ?"
 	gachaInfo := new(GachaMaster)
-	if err = h.DB.Get(gachaInfo, query, gachaID, requestAt, requestAt); err != nil {
+	if err = h.DB.GetContext(ctx, gachaInfo, query, gachaID, requestAt, requestAt); err != nil {
 		if sql.ErrNoRows == err {
 			return errorResponse(c, http.StatusNotFound, fmt.Errorf("not found gacha"))
 		}
@@ -1299,7 +1301,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 
 	// ガチャ提供割合(weight)の合計値を算出
 	var sum int64
-	err = h.DB.Get(&sum, "SELECT SUM(weight) FROM gacha_item_masters WHERE gacha_id=?", gachaID)
+	err = h.DB.GetContext(ctx, &sum, "SELECT SUM(weight) FROM gacha_item_masters WHERE gacha_id=?", gachaID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, err)
@@ -1407,7 +1409,7 @@ func (h *Handler) listPresent(c echo.Context) error {
 	}
 
 	var presentCount int
-	if err = h.DB.Get(&presentCount, "SELECT COUNT(*) FROM user_presents WHERE user_id = ? AND deleted_at IS NULL", userID); err != nil {
+	if err = h.DB.GetContext(ctx, &presentCount, "SELECT COUNT(*) FROM user_presents WHERE user_id = ? AND deleted_at IS NULL", userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
@@ -1451,7 +1453,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 		return errorResponse(c, http.StatusUnprocessableEntity, fmt.Errorf("presentIds is empty"))
 	}
 
-	if err = h.checkViewerID(userID, req.ViewerID); err != nil {
+	if err = h.checkViewerID(ctx, userID, req.ViewerID); err != nil {
 		if err == ErrUserDeviceNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1552,7 +1554,7 @@ func (h *Handler) listItem(c echo.Context) error {
 
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
-	if err = h.DB.Get(user, query, userID); err != nil {
+	if err = h.DB.GetContext(ctx, user, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, ErrUserNotFound)
 		}
@@ -1646,7 +1648,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	if err = h.checkViewerID(userID, req.ViewerID); err != nil {
+	if err = h.checkViewerID(ctx, userID, req.ViewerID); err != nil {
 		if err == ErrUserDeviceNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1660,7 +1662,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	INNER JOIN item_masters as im ON uc.card_id = im.id
 	WHERE uc.id = ? AND uc.user_id=?
 	`
-	if err = h.DB.Get(card, query, cardID, userID); err != nil {
+	if err = h.DB.GetContext(ctx, card, query, cardID, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1680,7 +1682,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	`
 	for _, v := range req.Items {
 		item := new(ConsumeUserItemData)
-		if err = h.DB.Get(item, query, v.ID, userID); err != nil {
+		if err = h.DB.GetContext(ctx, item, query, v.ID, userID); err != nil {
 			if err == sql.ErrNoRows {
 				return errorResponse(c, http.StatusNotFound, err)
 			}
@@ -1825,7 +1827,7 @@ func (h *Handler) updateDeck(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 	}
 
-	if err = h.checkViewerID(userID, req.ViewerID); err != nil {
+	if err = h.checkViewerID(ctx, userID, req.ViewerID); err != nil {
 		if err == ErrUserDeviceNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1914,7 +1916,7 @@ func (h *Handler) reward(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 	}
 
-	if err = h.checkViewerID(userID, req.ViewerID); err != nil {
+	if err = h.checkViewerID(ctx, userID, req.ViewerID); err != nil {
 		if err == ErrUserDeviceNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1923,7 +1925,7 @@ func (h *Handler) reward(c echo.Context) error {
 
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
-	if err = h.DB.Get(user, query, userID); err != nil {
+	if err = h.DB.GetContext(ctx, user, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, ErrUserNotFound)
 		}
@@ -1932,7 +1934,7 @@ func (h *Handler) reward(c echo.Context) error {
 
 	deck := new(UserDeck)
 	query = "SELECT * FROM user_decks WHERE user_id=? AND deleted_at IS NULL"
-	if err = h.DB.Get(deck, query, userID); err != nil {
+	if err = h.DB.GetContext(ctx, deck, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
@@ -1988,7 +1990,7 @@ func (h *Handler) home(c echo.Context) error {
 
 	deck := new(UserDeck)
 	query := "SELECT * FROM user_decks WHERE user_id=? AND deleted_at IS NULL"
-	if err = h.DB.Get(deck, query, userID); err != nil {
+	if err = h.DB.GetContext(ctx, deck, query, userID); err != nil {
 		if err != sql.ErrNoRows {
 			return errorResponse(c, http.StatusInternalServerError, err)
 		}
@@ -2013,7 +2015,7 @@ func (h *Handler) home(c echo.Context) error {
 
 	user := new(User)
 	query = "SELECT * FROM users WHERE id=?"
-	if err = h.DB.Get(user, query, userID); err != nil {
+	if err = h.DB.GetContext(ctx, user, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, ErrUserNotFound)
 		}
