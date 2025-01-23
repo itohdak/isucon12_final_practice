@@ -284,6 +284,9 @@ func (h *Handler) checkOneTimeToken(userID int64, token string, tokenType int, r
 
 // checkViewerID viewerIDとplatformの確認を行う
 func (h *Handler) checkViewerID(ctx context.Context, userID int64, viewerID string) error {
+	ctx, span := otel.Tracer("").Start(ctx, "checkViewerID")
+	defer span.End()
+
 	query := "SELECT * FROM user_devices WHERE user_id=? AND platform_id=?"
 	device := new(UserDevice)
 	if err := h.DB.GetContext(ctx, device, query, userID, viewerID); err != nil {
@@ -298,6 +301,9 @@ func (h *Handler) checkViewerID(ctx context.Context, userID int64, viewerID stri
 
 // checkBan BANされているユーザでかを確認する
 func (h *Handler) checkBan(ctx context.Context, userID int64) (bool, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "checkBan")
+	defer span.End()
+
 	banUser := new(UserBan)
 	query := "SELECT * FROM user_bans WHERE user_id=?"
 	if err := h.DB.GetContext(ctx, banUser, query, userID); err != nil {
@@ -320,6 +326,9 @@ func getRequestTime(c echo.Context) (int64, error) {
 
 // loginProcess ログイン処理
 func (h *Handler) loginProcess(ctx context.Context, tx *sqlx.Tx, userID int64, requestAt int64) (*User, []*UserLoginBonus, []*UserPresent, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "loginProcess")
+	defer span.End()
+
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
 	if err := tx.GetContext(ctx, user, query, userID); err != nil {
@@ -368,6 +377,9 @@ func isCompleteTodayLogin(lastActivatedAt, requestAt time.Time) bool {
 
 // obtainLoginBonus ログインボーナス付与
 func (h *Handler) obtainLoginBonus(ctx context.Context, tx *sqlx.Tx, userID int64, requestAt int64) ([]*UserLoginBonus, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "obtainLoginBonus")
+	defer span.End()
+
 	loginBonuses := make([]*LoginBonusMaster, 0)
 	query := "SELECT * FROM login_bonus_masters WHERE start_at <= ? AND end_at >= ?"
 	if err := tx.SelectContext(ctx, &loginBonuses, query, requestAt, requestAt); err != nil {
@@ -451,6 +463,9 @@ func (h *Handler) obtainLoginBonus(ctx context.Context, tx *sqlx.Tx, userID int6
 
 // obtainPresent プレゼント付与
 func (h *Handler) obtainPresent(ctx context.Context, tx *sqlx.Tx, userID int64, requestAt int64) ([]*UserPresent, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "obtainPresent")
+	defer span.End()
+
 	normalPresents := make([]*PresentAllMaster, 0)
 	query := "SELECT * FROM present_all_masters WHERE registered_start_at <= ? AND registered_end_at >= ?"
 	if err := tx.SelectContext(ctx, &normalPresents, query, requestAt, requestAt); err != nil {
@@ -526,6 +541,9 @@ func (h *Handler) obtainPresent(ctx context.Context, tx *sqlx.Tx, userID int64, 
 
 // obtainItem アイテム付与処理
 func (h *Handler) obtainItem(ctx context.Context, tx *sqlx.Tx, userID, itemID int64, itemType int, obtainAmount int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "obtainItem")
+	defer span.End()
+
 	obtainCoins := make([]int64, 0)
 	obtainCards := make([]*UserCard, 0)
 	obtainItems := make([]*UserItem, 0)
@@ -636,6 +654,9 @@ func (h *Handler) obtainItem(ctx context.Context, tx *sqlx.Tx, userID, itemID in
 
 // obtainItem アイテム付与処理
 func (h *Handler) obtainItems(ctx context.Context, tx *sqlx.Tx, userID int64, itemIDs []int64, itemType int, obtainAmounts []int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
+	ctx, span := otel.Tracer("").Start(ctx, "obtainItems")
+	defer span.End()
+
 	obtainCoins := make([]int64, 0)
 	obtainCards := make([]*UserCard, 0)
 	obtainItems := make([]*UserItem, 0)
