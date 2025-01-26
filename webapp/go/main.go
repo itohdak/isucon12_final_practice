@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -114,6 +115,7 @@ func main() {
 	// feature
 	API := e.Group("", h.apiMiddleware)
 	API.POST("/user", h.createUser)
+	API.POST("/user/internal", h.createUserInternal)
 	API.POST("/login", h.login)
 	sessCheckAPI := API.Group("", h.checkSessionMiddleware)
 	sessCheckAPI.GET("/user/:userID/gacha/index", h.listGacha)
@@ -872,6 +874,55 @@ func (h *Handler) createUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 	}
 
+	// ユーザ作成
+	uID, err := h.generateID(ctx)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+	url := "http://localhost:8080/user/internal"
+	createUserInternalRequest := CreateUserInternalRequest{
+		UserID:       uID,
+		ViewerID:     req.ViewerID,
+		PlatformType: req.PlatformType,
+		RequestAt:    requestAt,
+	}
+	jsonBody, err := json.Marshal(createUserInternalRequest)
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to json.Marshal: %v", err))
+	}
+	reqInternal, err := http.NewRequest(
+		"POST",
+		url,
+		bytes.NewBuffer(jsonBody),
+	)
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to call POST /user/internal: %v", err))
+	}
+	reqInternal.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(reqInternal)
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, fmt.Errorf("got error from POST /user/internal: %v", err))
+	}
+	defer resp.Body.Close()
+
+	var createUserInternalResponse *CreateUserResponse
+	if err := json.NewDecoder(resp.Body).Decode(createUserInternalResponse); err != nil {
+		errorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to decode response from POST /user/internal: %v", err))
+	}
+
+	return successResponse(c, createUserInternalResponse)
+}
+
+func (h *Handler) createUserInternal(c echo.Context) error {
+	defer c.Request().Body.Close()
+	ctx := c.Request().Context()
+	req := new(CreateUserInternalRequest)
+	if err := parseRequestBody(c, req); err != nil {
+		return errorResponse(c, http.StatusBadRequest, err)
+	}
+
 	tx, err := h.DB.Beginx()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
@@ -879,18 +930,18 @@ func (h *Handler) createUser(c echo.Context) error {
 	defer tx.Rollback() //nolint:errcheck
 
 	// ユーザ作成
-	uID, err := h.generateID(ctx)
+	uID := req.UserID
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 	user := &User{
 		ID:              uID,
 		IsuCoin:         0,
-		LastGetRewardAt: requestAt,
-		LastActivatedAt: requestAt,
-		RegisteredAt:    requestAt,
-		CreatedAt:       requestAt,
-		UpdatedAt:       requestAt,
+		LastGetRewardAt: req.RequestAt,
+		LastActivatedAt: req.RequestAt,
+		RegisteredAt:    req.RequestAt,
+		CreatedAt:       req.RequestAt,
+		UpdatedAt:       req.RequestAt,
 	}
 	query := "INSERT INTO users(id, last_activated_at, registered_at, last_getreward_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)"
 	if _, err = tx.ExecContext(ctx, query, user.ID, user.LastActivatedAt, user.RegisteredAt, user.LastGetRewardAt, user.CreatedAt, user.UpdatedAt); err != nil {
@@ -906,11 +957,11 @@ func (h *Handler) createUser(c echo.Context) error {
 		UserID:       user.ID,
 		PlatformID:   req.ViewerID,
 		PlatformType: req.PlatformType,
-		CreatedAt:    requestAt,
-		UpdatedAt:    requestAt,
+		CreatedAt:    req.RequestAt,
+		UpdatedAt:    req.RequestAt,
 	}
 	query = "INSERT INTO user_devices(id, user_id, platform_id, platform_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-	_, err = tx.ExecContext(ctx, query, userDevice.ID, user.ID, req.ViewerID, req.PlatformType, requestAt, requestAt)
+	_, err = tx.ExecContext(ctx, query, userDevice.ID, user.ID, req.ViewerID, req.PlatformType, req.RequestAt, req.RequestAt)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -938,8 +989,8 @@ func (h *Handler) createUser(c echo.Context) error {
 			AmountPerSec: *initCard.AmountPerSec,
 			Level:        1,
 			TotalExp:     0,
-			CreatedAt:    requestAt,
-			UpdatedAt:    requestAt,
+			CreatedAt:    req.RequestAt,
+			UpdatedAt:    req.RequestAt,
 		}
 		query = "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 		if _, err := tx.ExecContext(ctx, query, card.ID, card.UserID, card.CardID, card.AmountPerSec, card.Level, card.TotalExp, card.CreatedAt, card.UpdatedAt); err != nil {
@@ -958,8 +1009,8 @@ func (h *Handler) createUser(c echo.Context) error {
 		CardID1:   initCards[0].ID,
 		CardID2:   initCards[1].ID,
 		CardID3:   initCards[2].ID,
-		CreatedAt: requestAt,
-		UpdatedAt: requestAt,
+		CreatedAt: req.RequestAt,
+		UpdatedAt: req.RequestAt,
 	}
 	query = "INSERT INTO user_decks(id, user_id, user_card_id_1, user_card_id_2, user_card_id_3, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
 	if _, err := tx.ExecContext(ctx, query, initDeck.ID, initDeck.UserID, initDeck.CardID1, initDeck.CardID2, initDeck.CardID3, initDeck.CreatedAt, initDeck.UpdatedAt); err != nil {
@@ -967,7 +1018,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	}
 
 	// ログイン処理
-	user, loginBonuses, presents, err := h.loginProcess(ctx, tx, user.ID, requestAt)
+	user, loginBonuses, presents, err := h.loginProcess(ctx, tx, user.ID, req.RequestAt)
 	if err != nil {
 		if err == ErrUserNotFound || err == ErrItemNotFound || err == ErrLoginBonusRewardNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
@@ -991,9 +1042,9 @@ func (h *Handler) createUser(c echo.Context) error {
 		ID:        sID,
 		UserID:    user.ID,
 		SessionID: sessID,
-		CreatedAt: requestAt,
-		UpdatedAt: requestAt,
-		ExpiredAt: requestAt + 86400,
+		CreatedAt: req.RequestAt,
+		UpdatedAt: req.RequestAt,
+		ExpiredAt: req.RequestAt + 86400,
 	}
 	query = "INSERT INTO user_sessions(id, user_id, session_id, created_at, updated_at, expired_at) VALUES (?, ?, ?, ?, ?, ?)"
 	if _, err = tx.ExecContext(ctx, query, sess.ID, sess.UserID, sess.SessionID, sess.CreatedAt, sess.UpdatedAt, sess.ExpiredAt); err != nil {
@@ -1009,14 +1060,21 @@ func (h *Handler) createUser(c echo.Context) error {
 		UserID:           user.ID,
 		ViewerID:         req.ViewerID,
 		SessionID:        sess.SessionID,
-		CreatedAt:        requestAt,
-		UpdatedResources: makeUpdatedResources(requestAt, user, userDevice, initCards, []*UserDeck{initDeck}, nil, loginBonuses, presents),
+		CreatedAt:        req.RequestAt,
+		UpdatedResources: makeUpdatedResources(req.RequestAt, user, userDevice, initCards, []*UserDeck{initDeck}, nil, loginBonuses, presents),
 	})
 }
 
 type CreateUserRequest struct {
 	ViewerID     string `json:"viewerId"`
 	PlatformType int    `json:"platformType"`
+}
+
+type CreateUserInternalRequest struct {
+	UserID       int64  `json:"userId"`
+	ViewerID     string `json:"viewerId"`
+	PlatformType int    `json:"platformType"`
+	RequestAt    int64  `json:"requestAt"`
 }
 
 type CreateUserResponse struct {
