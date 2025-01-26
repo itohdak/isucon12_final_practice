@@ -112,10 +112,11 @@ func main() {
 	e.POST("/initialize", initialize)
 	e.GET("/health", h.health)
 
+	e.POST("/user/internal", h.createUserInternal)
+
 	// feature
 	API := e.Group("", h.apiMiddleware)
 	API.POST("/user", h.createUser)
-	API.POST("/user/internal", h.createUserInternal)
 	API.POST("/login", h.login)
 	sessCheckAPI := API.Group("", h.checkSessionMiddleware)
 	sessCheckAPI.GET("/user/:userID/gacha/index", h.listGacha)
