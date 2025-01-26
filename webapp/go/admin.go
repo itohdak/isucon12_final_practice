@@ -23,7 +23,7 @@ func (h *Handler) adminSessionCheckMiddleware(next echo.HandlerFunc) echo.Handle
 
 		adminSession := new(Session)
 		query := "SELECT * FROM admin_sessions WHERE session_id=? AND deleted_at IS NULL"
-		if err := h.DB.GetContext(ctx, adminSession, query, sessID); err != nil {
+		if err := h.DBAdmin.GetContext(ctx, adminSession, query, sessID); err != nil {
 			if err == sql.ErrNoRows {
 				return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
 			}
@@ -37,7 +37,7 @@ func (h *Handler) adminSessionCheckMiddleware(next echo.HandlerFunc) echo.Handle
 
 		if adminSession.ExpiredAt < requestAt {
 			query = "UPDATE admin_sessions SET deleted_at=? WHERE session_id=?"
-			if _, err = h.DB.Exec(query, requestAt, sessID); err != nil {
+			if _, err = h.DBAdmin.Exec(query, requestAt, sessID); err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
 			return errorResponse(c, http.StatusUnauthorized, ErrExpiredSession)
@@ -65,7 +65,7 @@ func (h *Handler) adminLogin(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 	}
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DBAdmin.Beginx()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -147,7 +147,7 @@ func (h *Handler) adminLogout(c echo.Context) error {
 	}
 
 	query := "UPDATE admin_sessions SET deleted_at=? WHERE session_id=? AND deleted_at IS NULL"
-	if _, err = h.DB.ExecContext(ctx, query, requestAt, sessID); err != nil {
+	if _, err = h.DBAdmin.ExecContext(ctx, query, requestAt, sessID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
@@ -159,39 +159,39 @@ func (h *Handler) adminLogout(c echo.Context) error {
 func (h *Handler) adminListMaster(c echo.Context) error {
 	ctx := c.Request().Context()
 	masterVersions := make([]*VersionMaster, 0)
-	if err := h.DB.SelectContext(ctx, &masterVersions, "SELECT * FROM version_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &masterVersions, "SELECT * FROM version_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	items := make([]*ItemMaster, 0)
-	if err := h.DB.SelectContext(ctx, &items, "SELECT * FROM item_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &items, "SELECT * FROM item_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	gachas := make([]*GachaMaster, 0)
-	if err := h.DB.SelectContext(ctx, &gachas, "SELECT * FROM gacha_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &gachas, "SELECT * FROM gacha_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	gachaItems := make([]*GachaItemMaster, 0)
-	if err := h.DB.SelectContext(ctx, &gachaItems, "SELECT * FROM gacha_item_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &gachaItems, "SELECT * FROM gacha_item_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	presentAlls := make([]*PresentAllMaster, 0)
-	if err := h.DB.SelectContext(ctx, &presentAlls, "SELECT * FROM present_all_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &presentAlls, "SELECT * FROM present_all_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 
 	}
 
 	loginBonuses := make([]*LoginBonusMaster, 0)
-	if err := h.DB.SelectContext(ctx, &loginBonuses, "SELECT * FROM login_bonus_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &loginBonuses, "SELECT * FROM login_bonus_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 
 	}
 
 	loginBonusRewards := make([]*LoginBonusRewardMaster, 0)
-	if err := h.DB.SelectContext(ctx, &loginBonusRewards, "SELECT * FROM login_bonus_reward_masters"); err != nil {
+	if err := h.DBAdmin.SelectContext(ctx, &loginBonusRewards, "SELECT * FROM login_bonus_reward_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
@@ -220,7 +220,7 @@ type AdminListMasterResponse struct {
 // PUT /admin/master
 func (h *Handler) adminUpdateMaster(c echo.Context) error {
 	ctx := c.Request().Context()
-	tx, err := h.DB.Beginx()
+	tx, err := h.DBAdmin.Beginx()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -533,7 +533,7 @@ func (h *Handler) adminUser(c echo.Context) error {
 
 	query := "SELECT * FROM users WHERE id=?"
 	user := new(User)
-	if err = h.DB.GetContext(ctx, user, query, userID); err != nil {
+	if err = h.DBAdmin.GetContext(ctx, user, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, ErrUserNotFound)
 		}
@@ -542,43 +542,43 @@ func (h *Handler) adminUser(c echo.Context) error {
 
 	query = "SELECT * FROM user_devices WHERE user_id=?"
 	devices := make([]*UserDevice, 0)
-	if err = h.DB.SelectContext(ctx, &devices, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &devices, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	query = "SELECT * FROM user_cards WHERE user_id=?"
 	cards := make([]*UserCard, 0)
-	if err = h.DB.SelectContext(ctx, &cards, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &cards, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	query = "SELECT * FROM user_decks WHERE user_id=?"
 	decks := make([]*UserDeck, 0)
-	if err = h.DB.SelectContext(ctx, &decks, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &decks, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	query = "SELECT * FROM user_items WHERE user_id=?"
 	items := make([]*UserItem, 0)
-	if err = h.DB.SelectContext(ctx, &items, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &items, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	query = "SELECT * FROM user_login_bonuses WHERE user_id=?"
 	loginBonuses := make([]*UserLoginBonus, 0)
-	if err = h.DB.SelectContext(ctx, &loginBonuses, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &loginBonuses, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	query = "SELECT * FROM user_presents WHERE user_id=?"
 	presents := make([]*UserPresent, 0)
-	if err = h.DB.SelectContext(ctx, &presents, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &presents, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	query = "SELECT * FROM user_present_all_received_history WHERE user_id=?"
 	presentHistory := make([]*UserPresentAllReceivedHistory, 0)
-	if err = h.DB.SelectContext(ctx, &presentHistory, query, userID); err != nil {
+	if err = h.DBAdmin.SelectContext(ctx, &presentHistory, query, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
@@ -622,7 +622,7 @@ func (h *Handler) adminBanUser(c echo.Context) error {
 
 	query := "SELECT * FROM users WHERE id=?"
 	user := new(User)
-	if err = h.DB.GetContext(ctx, user, query, userID); err != nil {
+	if err = h.DBAdmin.GetContext(ctx, user, query, userID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusBadRequest, ErrUserNotFound)
 		}
@@ -634,7 +634,7 @@ func (h *Handler) adminBanUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 	query = "INSERT user_bans(id, user_id, created_at, updated_at) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE updated_at = ?"
-	if _, err = h.DB.ExecContext(ctx, query, banID, userID, requestAt, requestAt, requestAt); err != nil {
+	if _, err = h.DBAdmin.ExecContext(ctx, query, banID, userID, requestAt, requestAt, requestAt); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
