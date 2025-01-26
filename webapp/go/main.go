@@ -908,7 +908,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	}
 	defer resp.Body.Close()
 
-	var createUserInternalResponse *CreateUserResponse
+	var createUserInternalResponse = &CreateUserResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(createUserInternalResponse); err != nil {
 		errorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to decode response from POST /user/internal: %v", err))
 	}
